@@ -81,7 +81,16 @@ wb_raw <- read.xlsx(wb_link,
 
 # print the column names
 wb_var <- get_info_wb(wb_raw)
+
+# check ----# 
+# e.g. 72 this month, if it's still 72 next month
+cat('World Bank data contains',nrow(wb_var), 'columns, please verify if it agrees with previous month')
+# check colname changes 
 # View(wb_var)
+
+
+
+
 
 
 
@@ -151,6 +160,7 @@ imf_raw <- read_excel(path = imf_loc)
 
 imf_var <- get_info_imf(imf_raw)
 # View(imf_var)
+cat('IMF data contains',nrow(imf_var), 'columns, please verify if it agrees with previous month')
 
 
 
@@ -230,7 +240,9 @@ colnames(dcommodity)
 
 
 # if you want, save it somewhere
-saveRDS(dcommodity, paste0(read_path, dir_val, 'dcommodity.rds'))
+year_month <- format(Sys.Date(), "%Y_%m")
+saveRDS(dcommodity, paste0(read_path, dir_val, 'dcommodity_', year_month, '.rds'))
+
 
 
 
@@ -282,12 +294,70 @@ p
 # two published series)
 
 
+library(lubridate)
+
+this_month <- format(Sys.Date(), "%Y_%m")
+dcommodity_thismonth <- readRDS(paste0(read_path, dir_val, 'dcommodity_', this_month, '.rds'))
+
+# pseudo-time stamped data
+# dcommodity |> tail()
+# create a copy that does not have the last month
+# this is for development
+# in practice, save the data with timestamp, load directly
+# dcommodity_lastmonth <- dcommodity[-nrow(dcommodity),] 
+# saveRDS(dcommodity_lastmonth, paste0(read_path, dir_val, 'dcommodity_', '2025_04', '.rds'))
+
+last_month <- format(Sys.Date() %m-% months(1), "%Y_%m")
+dcommodity_lastmonth <- readRDS(paste0(read_path, dir_val, 'dcommodity_', last_month, '.rds'))
 
 
+# check if they differ by 1 row
+
+if(nrow(dcommodity_thismonth) == nrow(dcommodity_lastmonth)+1){
+  print('Number of rows checked, ok')
+}else{
+  print('Please double check the number of rows in the new data')
+}
+
+# check if columns match 
+if(all.equal(colnames(dcommodity_thismonth), colnames(dcommodity_lastmonth))){
+  print('Column names match, ok')
+}else{
+  print('Please double check the variables')
+}
 
 
+# compare by point-wise division
+# remove the last line in this month's data
+# divide
 
+d_until_thismonth <- dcommodity_thismonth[-nrow(dcommodity_thismonth), ]
+# colnames(d_until_thismonth)
 
+# remove the time stamps
+# commodity only
+d_until_thismonth_co <- select(d_until_thismonth, -c(year, period, time, datetime))
+d_lastmonth_co <- select(dcommodity_lastmonth, -c(year, period, time, datetime))
+
+# pointwise division
+dimension <- dim(d_lastmonth_co)
+
+ratio <- matrix(nrow = dimension[1], ncol = dimension[2])
+for(i in 1:dimension[2]){
+  ratio[,i] <- d_until_thismonth_co[, i] / d_lastmonth_co[, i]
+}
+colnames(ratio) <- colnames(d_lastmonth_co)
+
+# return the column name if anything exceeds +- 30%
+
+id_abnormal <- which((ratio > 1.3) | (ratio < 0.7), arr.ind = T)
+# which(ratio == 1, arr.ind = T)
+# in this example nothing should return, as we have the exact same copies
+if(nrow(id_abnormal) == 0){
+  print('Checked ratio, nothing exceeds +- 30%, ok')
+}else{
+  print('Ratio between new and old are beyond +- 30%, check data sources')
+}
 
 
 # ____________ ----
@@ -454,8 +524,18 @@ phosphate_rock_filled$d_tofill
 phosphate_rock_filled$d_filled
 dcommodity_filled$phosphate_rock <- phosphate_rock_filled
 
+# impute with neighbors ----
+# note: so far only impute with 1 neighbor implemented
+
+# impute_one_by_one(k = 1, v = c(10, 11, 20, NA, 5))
+impute_with_neighbors(data = dcommodity_filled, varname = 'phosphate_rock')
 
 
+
+
+# latest missing: carry forward 
+# only when the last value is missing
+# the function is in util.R
 
 
 
